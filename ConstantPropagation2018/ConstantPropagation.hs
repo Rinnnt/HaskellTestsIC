@@ -40,13 +40,11 @@ update (k, v) kvs = (k, v) : nkvs
   where
     nkvs = filter ((k /=) . fst) kvs
 
-{-
-update :: (Id, Int) -> State -> State
-update (k, v) [] = [(k, v)]
-update (k, v) ((k', v') : kvs)
+update' :: (Id, Int) -> State -> State
+update' (k, v) [] = [(k, v)]
+update' (k, v) ((k', v') : kvs)
   | k == k'   = (k, v) : kvs
   | otherwise = (k', v') : (update (k, v) kvs)
--}
 
 -- Useful Boolean to Int function
 bToI :: Bool -> Int
@@ -96,6 +94,10 @@ applyPropagate :: Function -> Function
 applyPropagate (name, args, body)
   = (name, args, propagateConstants body)
 
+applyPropagate' :: Function -> Function
+applyPropagate' (name, args, body)
+  = (name, args, propagateConstants' body)
+
 ------------------------------------------------------------------------
 -- PART II
 
@@ -122,15 +124,83 @@ sub k v (Apply op x y)
 sub k v (Phi x y)
   = foldConst (Phi (sub k v x) (sub k v y))
 
+checkConst :: Exp -> Bool
+checkConst (Const _) = True
+checkConst _         = False
+
+constValue :: Exp -> Int
+constValue (Const x) = x
+constValue _ = 0
+
 -- Use (by uncommenting) any of the following, as you see fit...
--- type Worklist = [(Id, Int)]
--- scan :: Id -> Int -> Block -> (Worklist, Block)
--- scan :: (Exp -> Exp) -> Block -> (Exp -> Exp, Block)
+type Worklist = [(Id, Int)]
+
+scan :: Id -> Int -> Block -> (Worklist, Block)
+scan k v [] = ([], [])
+scan k v ((Assign k' e): block)
+  | k' == "$return" = (wl, (Assign k' e'): block')
+  | checkConst e'   = ((k', constValue e'): wl, block')
+  | otherwise       = (wl, (Assign k' e'): block')
+  where
+    (wl, block') = scan k v block
+    e' = sub k v e
+scan k v ((If e b b'): block) = (wl' ++ wl'' ++ wl''', (If e' block' block''): block''')
+  where
+    (wl', block') = scan k v b
+    (wl'', block'') = scan k v b'
+    (wl''', block''') = scan k v block
+    e' = sub k v e
+scan k v ((DoWhile b e): block) = (wl' ++ wl'', (DoWhile block' e'): block'')
+  where
+    (wl', block') = scan k v b
+    (wl'', block'') = scan k v block
+    e' = sub k v e
  
 propagateConstants :: Block -> Block
 -- Pre: the block is in SSA form
-propagateConstants 
-  = undefined
+propagateConstants block
+  = snd (repeatScan wl b)
+  where
+    (wl, b) = scan "$INVALID" 0 block
+
+    repeatScan :: Worklist -> Block -> (Worklist, Block)
+    repeatScan [] b = ([], b)
+    repeatScan ((k, v): wl) b = repeatScan (wl ++ wl') b'
+      where
+        (wl', b') = scan k v b
+
+scan' :: (Exp -> Exp) -> Block -> (Exp -> Exp, Block)
+scan' f [] = (f, [])
+scan' f ((Assign k e) : block)
+  | k == "$return" = (f', (Assign k e') : block')
+  | checkConst e'  = ((sub k (constValue e')) . f', block')
+  | otherwise      = (f', (Assign k e') : block')
+  where
+    (f', block') = scan' f block
+    e' = f e
+scan' f ((If e b b') : block) = (f''', (If e' block' block'') : block''')
+  where
+    (f', block') = scan' f b
+    (f'', block'') = scan' f' b'
+    (f''', block''') = scan' f'' block
+    e' = f e
+scan' f ((DoWhile b e) : block) = (f'', (DoWhile block' e') : block'')
+  where
+    (f', block') = scan' f b
+    (f'', block'') = scan' f' block
+    e' = f e
+
+propagateConstants' :: Block -> Block
+-- Pre: the block is in SSA form
+propagateConstants' block
+  = snd (repeatScan' id block)
+  where
+    repeatScan' :: (Exp -> Exp) -> Block -> (Exp -> Exp, Block)
+    repeatScan' f b
+      | b == b' = (f', b')
+      | otherwise = repeatScan' f' b'
+      where
+        (f', b') = scan' f b
 
 ------------------------------------------------------------------------
 -- Given functions for testing unPhi...
@@ -146,13 +216,26 @@ optimise :: Function -> Function
 optimise (name, args, body)
   = (name, args, unPhi (propagateConstants body))
 
+optimise' :: Function -> Function
+optimise' (name, args, body)
+  = (name, args, unPhi (propagateConstants' body))
+
 ------------------------------------------------------------------------
 -- PART III
 
 unPhi :: Block -> Block
 -- Pre: the block is in SSA form
-unPhi 
-  = undefined
+unPhi [] = []
+unPhi ((If e b b') : (Assign k (Phi e' e'')) : block)
+  = unPhi ((If e (b ++ [Assign k e']) (b' ++ [Assign k e''])) : block)
+unPhi ((DoWhile ((Assign k (Phi e' e'')) : b) e) : block)
+  = (Assign k e') : unPhi (DoWhile (b ++ [Assign k e'']) e : block)
+unPhi ((If e b b') : block)
+  = (If e (unPhi b) (unPhi b')) : unPhi block
+unPhi ((DoWhile b e): block)
+  = (DoWhile (unPhi b) e) : unPhi block
+unPhi (s : block)
+  = s : unPhi block
 
 ------------------------------------------------------------------------
 -- Part IV
