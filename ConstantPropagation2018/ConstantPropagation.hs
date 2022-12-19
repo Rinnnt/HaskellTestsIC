@@ -36,10 +36,17 @@ execFun (name, args, p) vs
 type State = [(Id, Int)]
 
 update :: (Id, Int) -> State -> State
+update (k, v) kvs = (k, v) : nkvs
+  where
+    nkvs = filter ((k /=) . fst) kvs
+
+{-
+update :: (Id, Int) -> State -> State
 update (k, v) [] = [(k, v)]
 update (k, v) ((k', v') : kvs)
   | k == k'   = (k, v) : kvs
   | otherwise = (k', v') : (update (k, v) kvs)
+-}
 
 -- Useful Boolean to Int function
 bToI :: Bool -> Int
@@ -54,8 +61,8 @@ opMap = [(Add, (+)),
          (Gtr, ((bToI .) . (>)))]
 
 apply :: Op -> Int -> Int -> Int
-apply op x y
-  = lookUp op opMap x y
+apply op
+  = lookUp op opMap
 
 eval :: Exp -> State -> Int
 -- Pre: the variables in the expression will all be bound in the given state 
