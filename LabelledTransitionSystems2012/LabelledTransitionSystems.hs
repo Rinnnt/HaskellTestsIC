@@ -36,7 +36,7 @@ transitions s
 
 alphabet :: LTS -> Alphabet
 alphabet 
-  = map snd
+  = nub . (map snd)
 
 ------------------------------------------------------
 -- PART II
@@ -94,7 +94,7 @@ pruneTransitions ts
     visit :: State -> [State] -> [Transition]
     visit s visited
       | s `elem` visited = []
-      | otherwise        = ns ++ (concatMap ((flip visit visited) . snd . fst) ns)
+      | otherwise        = ns ++ concatMap ((flip visit (s : visited)) . snd . fst) ns
       where
         ns = transitions s ts
 
@@ -102,8 +102,26 @@ pruneTransitions ts
 -- PART IV
 
 compose :: LTS -> LTS -> LTS
-compose 
-  = undefined
+compose lts lts'
+  = (nub . pruneTransitions) (concatMap newTransitions nss)
+  where
+    alph     = "$'" : alphabet lts
+    ss       = states lts
+    alph'    = "$" : alphabet lts'
+    ss'      = states lts'
+    nss      = [(s, s') | s <- ss, s' <- ss']
+    stateMap = map (\(s, s') -> ((s, s'), s * (length ss') + s')) nss
+
+    newTransitions :: (State, State) -> [Transition]
+    newTransitions (s, s')
+      = concatMap (\(t, t') -> composeTransitions t t' alph alph' stateMap) nts
+      where
+        ts   = transitions s lts
+        ets  = [((s, 0), "$")]
+        ts'  = transitions s' lts'
+        ets' = [((s', 0), "$'")]
+        nts  = [(t, t') | t <- if (null ts) then ets else ts,
+                          t' <- if (null ts') then ets' else ts']
 
 ------------------------------------------------------
 -- PART V
