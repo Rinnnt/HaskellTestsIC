@@ -159,17 +159,53 @@ type MetaState = [State]
 type MetaTransition = (MetaState, MetaState, Label)
 
 getFrontier :: State -> Automaton -> [Transition]
-getFrontier
-  = undefined
+getFrontier s a
+  = sort $ concatMap getFrontier' ts
+  where
+    ts = transitionsFrom s a
+    
+    getFrontier' :: Transition -> [Transition]
+    getFrontier' (_, t, Eps)
+      | isTerminal t a = (t, t, Eps) : getFrontier t a
+      | otherwise      = getFrontier t a
+    getFrontier' x@(f, t, l)
+      | isTerminal t a = (t, t, Eps) : [x]
+      | otherwise      = [x]
 
 groupTransitions :: [Transition] -> [(Label, [State])]
-groupTransitions
-  = undefined
+groupTransitions ts
+  = [(l, nub (map (\(_, t, _) -> t) (filter (\(_, _, l') -> l == l') ts))) | l <- labels ts]
 
+-- Doesn't work
 makeDA :: Automaton -> Automaton
 -- Pre: Any cycle in the NDA must include at least one non-Eps transition
-makeDA 
-  = undefined
+makeDA a@(s, t, ts)
+  = (mToS fm, map mToS fms, map mtToT fmts)
+  where
+    (fm, fms, fmts) = makeDA' [s] [] []
+    mToS :: MetaState -> State
+    mToS = head . sort
+    mtToT :: MetaTransition -> Transition
+    mtToT (ms, mt, l) = (mToS ms, mToS mt, l)
+
+    makeDA' :: [State] -> [MetaState] -> [MetaTransition]
+            -> (MetaState, [MetaState], [MetaTransition])
+    makeDA' ss mss mts
+      | ms `elem` mss = (ms, mss, mts)
+      | otherwise     = (ms, nmss, nmts)
+      where
+        ms       = (sort . nub) $ map (\(s, _, _) -> s) frontier
+        frontier = concatMap (flip getFrontier a) ss
+        grouped  = groupTransitions frontier
+        (nmss, nmts) = foldl f (ms : mss, mts) grouped
+
+        f :: ([MetaState], [MetaTransition]) -> (Label, [State]) -> ([MetaState], [MetaTransition])
+        f (mss', mts') (l, ss')
+          | r /= ss' = (mss'', (ss', r, l) : mts'')
+          where
+            (r, mss'', mts'') = makeDA' ss' mss' mts'
+        
+    
 
 --------------------------------------------------------
 -- Test cases
