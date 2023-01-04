@@ -189,8 +189,28 @@ translate (name, (as, e)) newName nameMap
     (b, e', ids') = translate' e nameMap ['$' : show n | n <- [1..]] 
 
 translate' :: Exp -> [(Id, Id)] -> [Id] -> (Block, Exp, [Id])
-translate' 
-  = undefined
+translate' e@(Const x) nameMap ids
+  = ([], e, ids)
+translate' e@(Var x) nameMap ids
+  = ([], e, ids)
+translate' (OpApp op e e') nameMap ids
+  = (b ++ b', OpApp op re re', ids'')
+  where
+    (b, re, ids') = translate' e nameMap ids
+    (b', re', ids'') = translate' e' nameMap ids'
+translate' (Cond p e e') nameMap ids
+  = ([If p (b ++ [Assign id re]) (b' ++ [Assign id re'])], Var id, ids''')
+  where
+    (id, ids') = (head ids, tail ids)
+    (b, re, ids'') = translate' e nameMap ids'
+    (b', re', ids''') = translate' e' nameMap ids''
+translate' e@(FunApp f es) nameMap ids
+  | memoised  = ([Call id memof es], Var id, ids')
+  | otherwise = ([], e, ids)
+  where
+    memoised   = f `elem` (map fst nameMap)
+    memof      = lookUp f nameMap
+    (id, ids') = (head ids, tail ids)
 
 ---------------------------------------------------------------------
 -- PREDEFINED FUNCTIONS
