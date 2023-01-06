@@ -167,9 +167,56 @@ expandXSL xsl source
   where
     root = Element "/" [] [source] 
 
+{-
+
+parsePath :: Context -> String -> (String, XML)
+parsePath ctx s
+  | null rem  = (ctx, n)
+  | otherwise = 
+  where
+    (n, rem) = break (=='/') s
+    parseContext :: Context -> String -> Context
+    parseContext ctx (c : cs)
+      | c == '.' = ctx
+      | c == '@' = 
+-}
+
 expandXSL' :: Context -> XSL -> [XML]
-expandXSL' 
-  = undefined
+expandXSL' ctx e@(Element "value-of" atts _)
+  | null values = [Text ""]
+  | otherwise   = [head values]
+  where
+    select = getAttribute "select" e
+    values = findValue [ctx] select
+
+    findValue :: [XML] -> String -> [XML]
+    findValue xmls s
+      | null rem && c == '.' = map getValue xmls
+      | null rem && c == '@' = filter (/= Text "") (map (Text . getAttribute cs) xmls)
+      | null rem             = map getValue (concatMap (getChildren n) xmls)
+      | c == '.'             = findValue xmls (tail rem)
+      | otherwise            = findValue (concatMap (getChildren n) xmls) (tail rem)
+      where
+        (n@(c : cs), rem) = break (=='/') s
+expandXSL' ctx e@(Element "for-each" atts children)
+  = concatMap (\ctx -> concatMap (\child -> expandXSL' ctx child) children) ctxs
+  where
+    select = getAttribute "select" e
+    ctxs   = findContext [ctx] select
+    
+    findContext :: [XML] -> String -> [XML]
+    findContext xmls s
+      | null rem && c == '.' = xmls
+      | null rem             = concatMap (getChildren n) xmls
+      | c == '.'             = findContext xmls (tail rem)
+      | otherwise            = findContext (concatMap (getChildren n) xmls) (tail rem)
+      where
+        (n@(c : cs), rem) = break (=='/') s
+expandXSL' ctx e@(Text _)
+  = [e]
+expandXSL' ctx (Element name atts children)
+  = [Element name atts (concatMap (expandXSL' ctx) children)]
+
 
 -------------------------------------------------------------------------
 -- Test data for Parts I and II
