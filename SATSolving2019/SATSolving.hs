@@ -80,11 +80,12 @@ flatten f
   = flatten' f
   where
     idmap = idMap f
+
     flatten' :: CNF -> CNFRep
     flatten' (Var x)       = [[lookUp x idmap]]
     flatten' (Not (Var x)) = [[negate (lookUp x idmap)]]
     flatten' (And f f')    = flatten' f ++  flatten' f'
-    flatten' (Or f f')     = [concat (flatten' f) ++ concat (flatten' f')]
+    flatten' (Or f f')     = [concat (flatten' f ++ flatten' f')] 
 
 --------------------------------------------------------------------------
 -- Part III
@@ -102,15 +103,54 @@ propUnits cnfrep
 
 -- 4 marks
 dp :: CNFRep -> [[Int]]
-dp 
-  = undefined
+dp cnfrep
+  | null cnfrep'      = [prop]
+  | [] `elem` cnfrep' = []
+  | otherwise         = map (prop ++) (prop' ++ prop'')
+  where
+    (cnfrep', prop) = propUnits cnfrep
+    first           = (head . head) cnfrep'
+    prop'           = dp ([first] : cnfrep')
+    prop''          = dp ([negate first] : cnfrep')
 
 --------------------------------------------------------------------------
 -- Part IV
 
 -- Bonus 2 marks
 allSat :: Formula -> [[(Id, Bool)]]
-allSat
-  = undefined
+allSat f
+  = map (convertId . (customSort 1)) (concatMap (\xs -> expand [xs]) sols)
+  where
+    idmap  = idMap f
+    cnfrep = (flatten . toCNF) f
+    sols   = dp cnfrep
+    
+    expand :: [[Int]] -> [[Int]]
+    expand sol
+      | null rem  = sol
+      | otherwise = expand (concatMap (addUnit remUnit) sol)
+      where
+        assigned = head sol ++ map (negate) (head sol)
+        rem      = map snd idmap \\ assigned
+        remUnit  = head rem
+
+        addUnit :: Int -> [Int] -> [[Int]]
+        addUnit p ps = [p : ps, (negate p) : ps]
+
+    convertId :: [Int] -> [(Id, Bool)]
+    convertId xs
+      = map convertId' xs
+      where
+        convertId' :: Int -> (Id, Bool)
+        convertId' n
+          = (lookUp (abs n) idmap', n > 0)
+          where
+            idmap' = map (\(x, y) -> (y, x)) idmap
+    
+    customSort :: Int -> [Int] -> [Int]
+    customSort _ [x] = [x]
+    customSort x ys
+      | x `elem` ys = x : (customSort (x + 1) (ys \\ [x]))
+      | otherwise   = (negate x) : (customSort (x + 1) (ys \\ [negate x]))
 
 
