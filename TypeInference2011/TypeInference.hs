@@ -89,38 +89,28 @@ inferType (Id x) env
 inferType (Prim x) _
   = lookUp x primTypes
 inferType (Cond e e' e'') env
-  | te == TBool && te' == te'' = te'
-  | otherwise                  = TErr
+  = if (te == TBool && te' == te'') then te' else TErr
   where
     te = inferType e env
     te' = inferType e' env
     te'' = inferType e'' env
 inferType (App e e') env
-  | targ /= TErr && targ == te' = tret
-  | otherwise                   = TErr
+  = inferApp (inferType e env) (inferType e' env)
   where
-    te = inferType e env
-    te' = inferType e' env
-    (targ, tret) = argRetType te
-    
-    argRetType :: Type -> (Type, Type)
-    argRetType (TFun x y) = (x, y)
-    argRetType _ = (TErr, TErr)
+    inferApp (TFun t1 t2) t3
+      | t1 == t3 = t2
+    inferApp _ _ = TErr
     
 ------------------------------------------------------
 -- PART III
 
 applySub :: Sub -> Type -> Type
-applySub s TInt
-  = TInt
-applySub s TBool
-  = TBool
-applySub s (TFun t t')
-  = TFun (applySub s t) (applySub s t')
 applySub s (TVar k)
   = tryToLookUp k (TVar k) s
-applySub s TErr
-  = TErr
+applySub s (TFun t t')
+  = TFun (applySub s t) (applySub s t')
+applySub s t
+  = t
 
 unify :: Type -> Type -> Maybe Sub
 unify t t'
@@ -135,10 +125,6 @@ unifyPairs ((TBool, TBool) : ps) s
   = unifyPairs ps s
 unifyPairs ((TVar v, TVar v') : ps) s
   | v == v'   = unifyPairs ps s
-  | otherwise = unifyPairs nps ns
-  where
-    ns = (v, TVar v') : s
-    nps = map (\(x, y) -> (applySub ns x, applySub ns y)) ps
 unifyPairs ((TVar v, t) : ps) s
   | occurs v t = Nothing
   | otherwise  = unifyPairs nps ns
@@ -146,16 +132,11 @@ unifyPairs ((TVar v, t) : ps) s
     ns = (v, t) : s
     nps = map (\(x, y) -> (applySub ns x, applySub ns y)) ps
 unifyPairs ((t, TVar v) : ps) s
-  | occurs v t = Nothing
-  | otherwise = unifyPairs nps ns
-  where
-    ns = (v, t) : s
-    nps = map (\(x, y) -> (applySub ns x, applySub ns y)) ps
+  = unifyPairs ((TVar v, t) : ps) s
 unifyPairs ((TFun t1 t2, TFun t1' t2') : ps) s
   = unifyPairs ((t1, t1') : (t2, t2') : ps) s
 unifyPairs _ _
   = Nothing
-
 
 ------------------------------------------------------
 -- PART IV
@@ -177,19 +158,50 @@ combineSubs
   = foldr1 combine
 
 inferPolyType :: Expr -> Type
-inferPolyType
-  = undefined
+inferPolyType e
+  = t
+  where
+    (_, t, _) = inferPolyType' e [] (map (('a' :) . show) [1..])
 
 -- You may optionally wish to use one of the following helper function declarations
 -- as suggested in the specification. 
 
--- inferPolyType' :: Expr -> TEnv -> [String] -> (Sub, Type, [String])
--- inferPolyType'
---   = undefined
+inferPolyType' :: Expr -> TEnv -> [String] -> (Sub, Type, [String])
+inferPolyType' (Number x) env vs
+  = ([], TInt, vs)
+inferPolyType' (Boolean b) env vs
+  = ([], TBool, vs)
+inferPolyType' (Id x) env vs
+  = ([], tryToLookUp x TErr env, vs)
+inferPolyType' (Prim p) env vs
+  = ([], tryToLookUp p TErr primTypes, vs)
+inferPolyType' (Fun x e) env (v : vs)
+  = (s, TFun tx te, vs')
+  where
+    env'         = (x, TVar v) : env
+    (s, te, vs') = inferPolyType' e env' vs
+    tx           = applySub s (TVar v)
+inferPolyType' (App f e) env (v : vs)
+  = (s, tv', vse)
+  where
+    (sf, tf, vsf) = inferPolyType' f env vs
+    env'          = updateTEnv env sf
+    (se, te, vse) = inferPolyType' e env' vsf
+    tv            = TVar v
+    ms            = unify tf (TFun te tv)
+    (s, tv')      = checkUnification ms tv
+    s'            = combineSubs [s, se, sf]
+inferPolyType' (Cond p t f) env vs
+  = undefined
+
+checkUnification :: Maybe Sub -> Type -> (Sub, Type)
+checkUnification (Just s) t
+  = (s, applySub s t)
+checkUnification _ _
+  = ([], TErr)
+    
 
 -- inferPolyType' :: Expr -> TEnv -> Int -> (Sub, Type, Int)
--- inferPolyType' 
---   = undefined
 
 ------------------------------------------------------
 -- Monomorphic type inference test cases from Table 1...
