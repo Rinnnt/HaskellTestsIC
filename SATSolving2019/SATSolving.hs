@@ -26,7 +26,7 @@ printF
 lookUp :: Eq a => a -> [(a, b)] -> b
 -- Pre: The item being looked up has a unique binding in the list
 lookUp k kvs
-  = head [v | (k', v) <- kvs, k == k']
+  = fromJust (lookup k kvs)
 
 -- 3 marks
 vars :: Formula -> [Id]
@@ -69,15 +69,14 @@ toCNF f
   = toCNF' (toNNF f)
   where
     toCNF' :: NNF -> CNF
-    toCNF' (Var x)          = (Var x)
-    toCNF' (Not x)          = (Not x)
     toCNF' (And f f')       = (And (toCNF' f) (toCNF' f'))
     toCNF' (Or f f')        = distribute f f'
+    toCNF' x                = x
 
 -- 4 marks
 flatten :: CNF -> CNFRep
-flatten f
-  = flatten' f
+flatten
+  = flatten'
   where
     idmap = idMap f
 
@@ -96,9 +95,9 @@ propUnits cnfrep
   | null units = (cnfrep, [])
   | otherwise  = (cnfrep'', unit : prop)
   where
-    units = [x | [x] <- cnfrep]
-    unit = head units
-    cnfrep' = map (\\ [negate unit]) (filter (notElem unit) cnfrep)
+    units            = [x | [x] <- cnfrep]
+    unit             = head units
+    cnfrep'          = map (filter (/= (negate unit))) (filter (notElem unit) cnfrep)
     (cnfrep'', prop) = propUnits cnfrep'
 
 -- 4 marks
@@ -119,7 +118,7 @@ dp cnfrep
 -- Bonus 2 marks
 allSat :: Formula -> [[(Id, Bool)]]
 allSat f
-  = map (convertId . (customSort 1)) (concatMap (\xs -> expand [xs]) sols)
+  =  map ((sortBy byFirst) . convertId) (concatMap (\xs -> expand [xs]) sols)
   where
     idmap  = idMap f
     cnfrep = (flatten . toCNF) f
@@ -147,10 +146,6 @@ allSat f
           where
             idmap' = map (\(x, y) -> (y, x)) idmap
     
-    customSort :: Int -> [Int] -> [Int]
-    customSort _ [x] = [x]
-    customSort x ys
-      | x `elem` ys = x : (customSort (x + 1) (ys \\ [x]))
-      | otherwise   = (negate x) : (customSort (x + 1) (ys \\ [negate x]))
-
+    byFirst :: (Id, Bool) -> (Id, Bool) -> Ordering
+    byFirst (x, _) (y, _) = compare x y
 
